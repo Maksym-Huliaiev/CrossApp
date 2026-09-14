@@ -6,6 +6,8 @@
 ## Запуск
 dotnet build
 dotnet run --project src/Cli
+dotnet run --project src/Cli -- --json
+123456
 
 ## Середовище
 .NET SDK 10, Windows 10 x64
