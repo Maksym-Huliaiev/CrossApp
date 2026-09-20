@@ -1,20 +1,21 @@
-# CrossApp
-Наскрізний проєкт з крос-платформного програмування.
-Предметна область: Склад. Сутності: Product, StockBatch, Warehouse, Movement.
-Призначення: облік залишків товарів по партіях.
+## Лабораторна робота 2: Бібліотека Core та публікація
 
-## Запуск
-dotnet build
-dotnet run --project src/Cli
-dotnet run --project src/Cli -- --json
-123456
+**Структура рішення:**
+- `Cli` — консольний застосунок, який є точкою входу і лише виводить дані.
+- `Core` — бібліотека класів (classlib), яка містить усю логіку збору інформації про середовище.
 
-## Середовище
-.NET SDK 10, Windows 10 x64
+**Команди для роботи з проєктом:**
+Збірка: `dotnet build`
+Запуск: `dotnet run --project src/Cli`
+Публікація (self-contained): `dotnet publish src/Cli -c Release -r win-x64 --self-contained true`
+Публікація (framework-dependent): `dotnet publish src/Cli -c Release -r win-x64 --self-contained false`
+Запуск скомпільованого файлу (Windows): `./src/Cli/bin/Release/net10.0/win-x64/publish/Cli.exe`
 
-## Додаткове завдання
-Розміри каталогів publish (self-contained):
-* **win-x64:** 76.8 MB
-* **linux-x64:** 78.7 MB
+### Порівняння режимів публікації (RID: win-x64)
 
-Також реалізовано підтримку прапорця командного рядка `--json` для виведення інформації у форматі JSON.
+| Режим | Розмір publish | Потрібен runtime |
+| :--- | :--- | :--- |
+| self-contained | ~70 МБ | ні |
+| framework-dependent | ~0.2 МБ | так (.NET 10) |
+
+

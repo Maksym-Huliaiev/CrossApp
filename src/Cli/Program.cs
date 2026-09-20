@@ -1,60 +1,17 @@
 ﻿using System;
-using System.Runtime.InteropServices;
-using System.Text.Json;
+using Core;
 
-class Program
-{
-    static void Main(string[] args)
-    {
-        var info = new
-        {
-            Project = "CrossApp — практикум з крос-платформного програмування",
-            Student = "Гуляєв Максим ФЕІ 37",
-            OSDescription = RuntimeInformation.OSDescription,
-            OSEnvironment = Environment.OSVersion.ToString(),
-            Architecture = RuntimeInformation.ProcessArchitecture.ToString(),
-            NetVersion = Environment.Version.ToString(),
-            Runtime = RuntimeInformation.FrameworkDescription,
-            AppDir = AppContext.BaseDirectory,
-            CurrentDir = Environment.CurrentDirectory,
-            Domain = "Склад (товари, партії, залишки, переміщення)"
-        };
+// Виклик методу з нашої нової бібліотеки
+EnvironmentReport report = EnvironmentInfo.Collect();
 
-        bool useJson = false;
-        foreach (var arg in args)
-        {
-            if (arg == "--json")
-            {
-                useJson = true;
-                break;
-            }
-        }
-
-        if (useJson)
-        {
-            // Оновлені налаштування JSON, щоб українські літери відображалися нормально
-            var options = new JsonSerializerOptions 
-            { 
-                WriteIndented = true,
-                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-            };
-            string jsonString = JsonSerializer.Serialize(info, options);
-            Console.WriteLine(jsonString);
-        }
-        else
-        {
-            Console.WriteLine(info.Project);
-            Console.WriteLine($"Студент: {info.Student}");
-            Console.WriteLine("------------------------------------------------------");
-            Console.WriteLine($"ОС (OSDescription): {info.OSDescription}");
-            Console.WriteLine($"ОС (Environment)  : {info.OSEnvironment}");
-            Console.WriteLine($"Архітектура процесу: {info.Architecture}");
-            Console.WriteLine($"Версія .NET (CLR): {info.NetVersion}");
-            Console.WriteLine($"Runtime : {info.Runtime}");
-            Console.WriteLine($"Каталог застосунку: {info.AppDir}");
-            Console.WriteLine($"Поточний каталог : {info.CurrentDir}");
-            Console.WriteLine("------------------------------------------------------");
-            Console.WriteLine($"Предметна область: {info.Domain}");
-        }
-    }
-}
+Console.WriteLine("CrossApp - iнформацiя про середовище");
+Console.WriteLine("Студент: Гуляєв Максим ФЕI 37");
+Console.WriteLine(new string('-', 52));
+Console.WriteLine($"OC               : {report.OsDescription}");
+Console.WriteLine($"Runtime          : {report.FrameworkDescription}");
+Console.WriteLine($"Архітектура      : {report.ProcessArchitecture}");
+Console.WriteLine($"RID (визначено)  : {report.DetectedRid}");
+Console.WriteLine($"RID (від .NET)   : {report.ReportedRid}");
+Console.WriteLine($"Каталог          : {report.BaseDirectory}");
+Console.WriteLine(new string('-', 52));
+Console.WriteLine("Предметна область: Склад (товари, партії, залишки, переміщення)");
