@@ -2,27 +2,32 @@ using System.Runtime.InteropServices;
 
 namespace Core;
 
-// Запис (record) для зберігання даних про середовище
 public sealed record EnvironmentReport(
     string OsDescription,
     string FrameworkDescription,
     string ProcessArchitecture,
     string DetectedRid,
     string ReportedRid,
-    string BaseDirectory);
+    string BaseDirectory,
+    string BuildNote); // Додано нове поле для додаткового завдання
 
-// Статичний клас із логікою збору цих даних
 public static class EnvironmentInfo
 {
+#if NET10_0_OR_GREATER
+    const string BuildNote = "збірка під net10.0";
+#else
+    const string BuildNote = "збірка під net8.0";
+#endif
+
     public static EnvironmentReport Collect() => new(
         RuntimeInformation.OSDescription,
         RuntimeInformation.FrameworkDescription,
         RuntimeInformation.ProcessArchitecture.ToString(),
         DetectRid(),
         RuntimeInformation.RuntimeIdentifier,
-        AppContext.BaseDirectory);
+        AppContext.BaseDirectory,
+        BuildNote); // Передаємо значення константи у запис
 
-    // Ручне визначення RID
     private static string DetectRid()
     {
         string os = 
