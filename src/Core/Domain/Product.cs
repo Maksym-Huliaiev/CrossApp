@@ -2,6 +2,14 @@ using Core.Dto;
 
 namespace Core.Domain;
 
+// Додаткове завдання 3
+public enum ProductStatus
+{
+    Draft,      
+    Confirmed,  
+    Cancelled   
+}
+
 public sealed class Product
 {
     private int _quantity;
@@ -12,6 +20,7 @@ public sealed class Product
     public string Unit { get; }
     public string? Note { get; private set; }
     public int Quantity => _quantity;
+    public ProductStatus Status { get; private set; } = ProductStatus.Draft;
 
     private Product(string id, string sku, string name, string unit, int quantity, string? note)
     {
@@ -23,7 +32,6 @@ public sealed class Product
         Note = note;
     }
 
-    // Фабричний метод: єдина точка створення з перевіркою всіх інваріантів
     public static Product Create(string id, string sku, string name, string unit, int quantity, string? note = null)
     {
         if (string.IsNullOrWhiteSpace(id))
@@ -48,8 +56,31 @@ public sealed class Product
             normalizedNote);
     }
 
+    // Додаткове завдання 3
+    public void ChangeStatus(ProductStatus targetStatus)
+    {
+        bool canTransition = (Status, targetStatus) switch
+        {
+            (ProductStatus.Draft, ProductStatus.Confirmed) => true,
+            (ProductStatus.Draft, ProductStatus.Cancelled) => true,
+            (ProductStatus.Confirmed, ProductStatus.Cancelled) when _quantity == 0 => true,
+            _ => false
+        };
+
+        if (!canTransition)
+        {
+            throw new InvalidOperationException(
+                $"Неприпустимий перехід стану для {Sku}: {Status} -> {targetStatus} (поточний залишок: {_quantity})");
+        }
+
+        Status = targetStatus;
+    }
+
     public void RegisterArrival(int amount)
     {
+        if (Status == ProductStatus.Cancelled)
+            throw new InvalidOperationException($"Товар {Sku} скасовано (Cancelled), прихід неможливий");
+
         if (amount <= 0)
             throw new ArgumentOutOfRangeException(nameof(amount), amount, "Кількість приходу має бути більшою за нуль");
 
@@ -58,6 +89,9 @@ public sealed class Product
 
     public void Issue(int amount)
     {
+        if (Status == ProductStatus.Cancelled)
+            throw new InvalidOperationException($"Товар {Sku} скасовано (Cancelled), видача неможлива");
+
         if (amount <= 0)
             throw new ArgumentOutOfRangeException(nameof(amount), amount, "Кількість видачі має бути більшою за нуль");
 
@@ -67,14 +101,11 @@ public sealed class Product
         _quantity -= amount;
     }
 
-    // Мапінг у формат тижня 3 і назад (знадобиться на тижні 5)
     public ProductDto ToDto() => new(Id, Sku, Name, Unit, Quantity, Note);
 
     public static Product FromDto(ProductDto dto) =>
         Create(dto.Id, dto.Sku, dto.Name, dto.Unit, dto.Quantity, dto.Note);
 
     public override string ToString() =>
-        Note is null
-            ? $"{Id} [{Sku}] {Name} - {Quantity} {Unit}"
-            : $"{Id} [{Sku}] {Name} - {Quantity} {Unit} ({Note})";
+        $"{Id} [{Sku}] {Name} - {Quantity} {Unit} (Стан: {Status})";
 }

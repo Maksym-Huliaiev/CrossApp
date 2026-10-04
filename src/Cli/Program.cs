@@ -1,5 +1,4 @@
 ﻿using Core.Domain;
-using Core.Dto;
 using Core.Import;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
@@ -12,74 +11,40 @@ if (!File.Exists(path))
     return 1;
 }
 
-MixedImportResult result = Path.GetExtension(path).ToLowerInvariant() switch
+MixedImportResult rawImport = Path.GetExtension(path).ToLowerInvariant() switch
 {
     ".csv" => ProductCsvImporter.Load(path),
     ".json" => ProductJsonImporter.Load(path),
     _ => throw new NotSupportedException("Підтримуються лише файли .csv та .json")
 };
 
-// Статистика імпорту з Лабораторної №3
-int total = result.Products.Count + result.Warehouses.Count + result.Errors.Count;
-int accepted = result.Products.Count + result.Warehouses.Count;
-int skipped = result.Errors.Count;
-double errorRate = total == 0 ? 0 : (double)skipped / total * 100;
+// === Додаткове завдання 1: метод DomainImportMapper.ToDomain(rawImport) ===
+DomainValidationResult domainResult = DomainImportMapper.ToDomain(rawImport);
 
-Console.WriteLine($"[Статистика імпорту] Усього: {total} | Прийнято: {accepted} | Пропущено: {skipped} | Помилок: {errorRate:F1}%");
-Console.WriteLine(new string('-', 70));
-
-// Додаткове завдання 1 (Лабораторна №4): перетворення DTO -> Доменні сутності з перевіркою інваріантів
-List<Product> domainProducts = [];
-List<Warehouse> domainWarehouses = [];
-List<string> domainErrors = [.. result.Errors];
-
-foreach (ProductDto dto in result.Products)
-{
-    try
-    {
-        domainProducts.Add(Product.FromDto(dto));
-    }
-    catch (Exception ex)
-    {
-        domainErrors.Add($"Інваріант товару ({dto.Id}): {ex.Message}");
-    }
-}
-
-foreach (WarehouseDto dto in result.Warehouses)
-{
-    try
-    {
-        domainWarehouses.Add(Warehouse.FromDto(dto));
-    }
-    catch (Exception ex)
-    {
-        domainErrors.Add($"Інваріант складу ({dto.Id}): {ex.Message}");
-    }
-}
-
-Console.WriteLine($"Створено доменних сутностей товарів: {domainProducts.Count}");
-foreach (Product p in domainProducts)
+Console.WriteLine("=== Додаткове завдання 1: Імпорт DTO -> Доменні сутності ===");
+Console.WriteLine($"Успішно створено товарів: {domainResult.Products.Count}, складів: {domainResult.Warehouses.Count}");
+foreach (Product p in domainResult.Products)
     Console.WriteLine($" [ТОВАР] {p}");
-
-Console.WriteLine($"\nСтворено доменних сутностей складів: {domainWarehouses.Count}");
-foreach (Warehouse w in domainWarehouses)
+foreach (Warehouse w in domainResult.Warehouses)
     Console.WriteLine($" [СКЛАД] {w}");
 
-if (domainErrors.Count > 0)
+if (domainResult.Errors.Count > 0)
 {
-    Console.WriteLine($"\nПропущено записів (парсинг + інваріанти): {domainErrors.Count}");
-    foreach (string e in domainErrors)
-        Console.WriteLine($" ! {e}");
+    Console.WriteLine($"Відхилено записів (парсинг + інваріанти): {domainResult.Errors.Count}");
+    foreach (string err in domainResult.Errors)
+        Console.WriteLine($" ! {err}");
 }
 
 Console.WriteLine(new string('=', 70));
 
-// Основне завдання Лабораторної №4: демонстрація доменної моделі та інваріантів
-Console.WriteLine("\n--- Сценарій 1: успіх ---");
+// === Основне завдання + Додаткові завдання 2 і 3 ===
+Console.WriteLine("\n--- Сценарій 1: успіх (включно зі зміною станів enum) ---");
 Warehouse warehouse = Warehouse.Create("W-001", "Головний склад", "Львів, вул. Зелена");
 Product product = Product.Create("P-001", "sku-001", "Цемент М400 25кг", "шт", 100);
 Console.WriteLine(product);
 
+// Додаткове завдання 3: перехід Draft -> Confirmed
+product.ChangeStatus(ProductStatus.Confirmed);
 product.RegisterArrival(50);
 product.Issue(30);
 warehouse.AddProduct(product);
@@ -91,8 +56,25 @@ Console.WriteLine("\n--- Сценарій 2: порушення інваріан
 TryDo("видача більша за залишок", () => product.Issue(1000));
 TryDo("порожній SKU", () => Product.Create("P-002", "", "Пісок", "т", 10));
 TryDo("від'ємний залишок", () => Product.Create("P-003", "SKU-003", "Цегла", "шт", -5));
-TryDo("нульовий прихід", () => product.RegisterArrival(0));
 TryDo("дублікат товару на складі", () => warehouse.AddProduct(Product.Create("P-099", "SKU-001", "Цемент копія", "шт", 10)));
+
+// Демонстрація Додаткового завдання 3 (неприпустимі переходи enum через switch expression)
+TryDo("скасування товару з ненульовим залишком (Confirmed -> Cancelled)",
+    () => product.ChangeStatus(ProductStatus.Cancelled));
+
+Product cancelledProduct = Product.Create("P-004", "SKU-004", "Вапно", "шт", 0);
+cancelledProduct.ChangeStatus(ProductStatus.Cancelled);
+TryDo("повернення зі скасованого стану (Cancelled -> Confirmed)",
+    () => cancelledProduct.ChangeStatus(ProductStatus.Confirmed));
+
+// Демонстрація Додаткового завдання 2 (інваріант на 2 сутності: ліміт 5 товарів на складі)
+for (int i = 2; i <= 5; i++)
+{
+    warehouse.AddProduct(Product.Create($"P-00{i}", $"SKU-00{i}", $"Товар {i}", "шт", 10));
+}
+Console.WriteLine($" Заповнений склад: {warehouse}");
+TryDo("перевищення ліміту 5 товарів на складі",
+    () => warehouse.AddProduct(Product.Create("P-006", "SKU-006", "Товар 6", "шт", 10)));
 
 Console.WriteLine($"\nСпостережуваний факт — після всіх відмов стан об'єкта не змінився:\n{product}");
 

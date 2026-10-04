@@ -4,6 +4,7 @@ namespace Core.Domain;
 
 public sealed class Warehouse
 {
+    public const int MaxProductsLimit = 5;
     private readonly List<Product> _products = [];
 
     public string Id { get; }
@@ -30,9 +31,17 @@ public sealed class Warehouse
         return new Warehouse(id.Trim(), name.Trim(), location.Trim());
     }
 
+    // Додаткове завдання  (Warehouse + Product)
     public void AddProduct(Product product)
     {
         ArgumentNullException.ThrowIfNull(product);
+
+        if (product.Status == ProductStatus.Cancelled)
+            throw new InvalidOperationException($"Не можна додати скасований товар {product.Sku} на склад {Id}");
+
+        if (_products.Count >= MaxProductsLimit)
+            throw new InvalidOperationException(
+                $"Перевищено ліміт складу {Id}: вже зареєстровано {_products.Count} із {MaxProductsLimit} дозволених товарів");
 
         if (_products.Any(p => p.Sku == product.Sku))
             throw new InvalidOperationException($"Товар зі SKU {product.Sku} вже є на складі {Id}");
@@ -45,5 +54,5 @@ public sealed class Warehouse
     public static Warehouse FromDto(WarehouseDto dto) =>
         Create(dto.Id, dto.Name, dto.Location);
 
-    public override string ToString() => $"{Id} [{Name}] ({Location}) — товарів: {_products.Count}";
+    public override string ToString() => $"{Id} [{Name}] ({Location}) — товарів: {_products.Count}/{MaxProductsLimit}";
 }
