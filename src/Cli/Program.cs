@@ -1,94 +1,58 @@
-﻿using Core.Domain;
-using Core.Import;
+﻿using Cli;
+using Core.Domain;
+using Core.Services;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-string path = args.Length > 0 ? args[0] : Path.Combine("data", "sample.csv");
+var store = StoreFactory.Create(args);
+var service = new CatalogService(store);
 
-if (!File.Exists(path))
+Console.WriteLine($"=== Лабораторна робота 5 ===");
+Console.WriteLine($"Сховище: {store.GetType().Name}\n");
+
+Console.WriteLine("--- 1. Початковий список товарів ---");
+PrintCatalog(service.All());
+
+Console.WriteLine("\n--- 2. Виконання операцій (Add, Receive, Issue) ---");
+var added = service.Add("SKU-005", "Гіпсокартон 12.5мм", "лист", 40);
+Console.WriteLine($"[Додано] ID: {added.Id} | {added.Sku} | {added.Name} | {added.Quantity} {added.Unit}");
+
+Console.WriteLine($"Прихід товару (+20 {added.Unit})...");
+service.Receive(added.Id, 20);
+
+Console.WriteLine($"Видача товару (-15 {added.Unit})...");
+service.Issue(added.Id, 15);
+
+var updated = service.Find(added.Id);
+Console.WriteLine($"Поточний залишок: {updated?.Quantity} {updated?.Unit}\n");
+
+Console.WriteLine("--- 3. Пошук з предикатом Func<Product, bool> ---");
+Console.WriteLine("Товари з залишком > 100:");
+PrintCatalog(service.Search(p => p.Quantity > 100));
+
+Console.WriteLine("\nТовари з назвою, що містить 'Цемент':");
+PrintCatalog(service.Search(p => p.Name.Contains("Цемент", StringComparison.OrdinalIgnoreCase)));
+
+Console.WriteLine("\n--- 4. Стан каталогу після операцій ---");
+PrintCatalog(service.All());
+
+Console.WriteLine("\n--- 5. Сценарій відмови (try/catch) ---");
+try
 {
-    Console.WriteLine($"Файл не знайдено: {Path.GetFullPath(path)}");
-    return 1;
+    Console.WriteLine("Спроба виконати операцію для неіснуючого id='fake-999':");
+    service.Receive("fake-999", 10);
+}
+catch (InvalidOperationException ex)
+{
+    Console.WriteLine($"[Очікувана помилка]: {ex.Message}");
 }
 
-MixedImportResult rawImport = Path.GetExtension(path).ToLowerInvariant() switch
+static void PrintCatalog(IEnumerable<Product> products)
 {
-    ".csv" => ProductCsvImporter.Load(path),
-    ".json" => ProductJsonImporter.Load(path),
-    _ => throw new NotSupportedException("Підтримуються лише файли .csv та .json")
-};
-
-// === Додаткове завдання 1: метод DomainImportMapper.ToDomain(rawImport) ===
-DomainValidationResult domainResult = DomainImportMapper.ToDomain(rawImport);
-
-Console.WriteLine("=== Додаткове завдання 1: Імпорт DTO -> Доменні сутності ===");
-Console.WriteLine($"Успішно створено товарів: {domainResult.Products.Count}, складів: {domainResult.Warehouses.Count}");
-foreach (Product p in domainResult.Products)
-    Console.WriteLine($" [ТОВАР] {p}");
-foreach (Warehouse w in domainResult.Warehouses)
-    Console.WriteLine($" [СКЛАД] {w}");
-
-if (domainResult.Errors.Count > 0)
-{
-    Console.WriteLine($"Відхилено записів (парсинг + інваріанти): {domainResult.Errors.Count}");
-    foreach (string err in domainResult.Errors)
-        Console.WriteLine($" ! {err}");
-}
-
-Console.WriteLine(new string('=', 70));
-
-// === Основне завдання + Додаткові завдання 2 і 3 ===
-Console.WriteLine("\n--- Сценарій 1: успіх (включно зі зміною станів enum) ---");
-Warehouse warehouse = Warehouse.Create("W-001", "Головний склад", "Львів, вул. Зелена");
-Product product = Product.Create("P-001", "sku-001", "Цемент М400 25кг", "шт", 100);
-Console.WriteLine(product);
-
-// Додаткове завдання 3: перехід Draft -> Confirmed
-product.ChangeStatus(ProductStatus.Confirmed);
-product.RegisterArrival(50);
-product.Issue(30);
-warehouse.AddProduct(product);
-
-Console.WriteLine(product);
-Console.WriteLine(warehouse);
-
-Console.WriteLine("\n--- Сценарій 2: порушення інваріантів ---");
-TryDo("видача більша за залишок", () => product.Issue(1000));
-TryDo("порожній SKU", () => Product.Create("P-002", "", "Пісок", "т", 10));
-TryDo("від'ємний залишок", () => Product.Create("P-003", "SKU-003", "Цегла", "шт", -5));
-TryDo("дублікат товару на складі", () => warehouse.AddProduct(Product.Create("P-099", "SKU-001", "Цемент копія", "шт", 10)));
-
-// Демонстрація Додаткового завдання 3 (неприпустимі переходи enum через switch expression)
-TryDo("скасування товару з ненульовим залишком (Confirmed -> Cancelled)",
-    () => product.ChangeStatus(ProductStatus.Cancelled));
-
-Product cancelledProduct = Product.Create("P-004", "SKU-004", "Вапно", "шт", 0);
-cancelledProduct.ChangeStatus(ProductStatus.Cancelled);
-TryDo("повернення зі скасованого стану (Cancelled -> Confirmed)",
-    () => cancelledProduct.ChangeStatus(ProductStatus.Confirmed));
-
-// Демонстрація Додаткового завдання 2 (інваріант на 2 сутності: ліміт 5 товарів на складі)
-for (int i = 2; i <= 5; i++)
-{
-    warehouse.AddProduct(Product.Create($"P-00{i}", $"SKU-00{i}", $"Товар {i}", "шт", 10));
-}
-Console.WriteLine($" Заповнений склад: {warehouse}");
-TryDo("перевищення ліміту 5 товарів на складі",
-    () => warehouse.AddProduct(Product.Create("P-006", "SKU-006", "Товар 6", "шт", 10)));
-
-Console.WriteLine($"\nСпостережуваний факт — після всіх відмов стан об'єкта не змінився:\n{product}");
-
-return 0;
-
-static void TryDo(string title, Action action)
-{
-    try
+    Console.WriteLine($"{"ID",-10} {"SKU",-10} {"Назва",-22} {"К-сть",6} {"Од.",-6}");
+    Console.WriteLine(new string('-', 58));
+    foreach (var p in products)
     {
-        action();
-        Console.WriteLine($" {title}: виняток НЕ спрацював — інваріант відсутній!");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($" {title}: {ex.GetType().Name} — {ex.Message}");
+        Console.WriteLine($"{p.Id,-10} {p.Sku,-10} {p.Name,-22} {p.Quantity,6} {p.Unit,-6}");
     }
 }

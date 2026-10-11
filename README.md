@@ -1,20 +1,28 @@
-## Лабораторна робота 4: Доменна модель та інваріанти (Склад)
+## Лабораторна робота 5: Сервісний шар, сховища та ручний DI
 
-Реалізовано доменні сутності предметної області «Склад» (`Product` та `Warehouse`) в каталозі `src/Core/Domain` із повною інкапсуляцією стану, приватними конструкторами, фабричними методами `Create` та мапінгом `ToDto()` / `FromDto()`.
+### Основна частина
+* **Інтерфейс сховища**: `ICatalogStore` (Core/Abstractions)
+* **Реалізації сховища**:
+  * `InMemoryCatalogStore` — збереження у словнику в оперативній пам'яті на базі `SampleData`
+  * `FileCatalogStore` — персистентне файлове сховище з кешем і збереженням у `data/catalog.json` через DTO
+* **Сервісний шар**: `CatalogService` (Core/Services) — інкапсулює бізнес-операції `Add`, `Receive`, `Issue`, `Find`, `Search`
+* **Composition Root**: вибір реалізації сховища та створення залежностей без DI-контейнера
 
-### Перелік інваріантів
-* **Обов'язкові реквізити (`Id`, `Sku`, `Name`, `Unit`, `Location`):** не можуть бути порожніми або пробільними (`ArgumentException`).
-* **Початковий залишок (`Quantity`):** не може бути меншим за 0 при створенні (`ArgumentOutOfRangeException`).
-* **Кількість при операціях (`RegisterArrival`, `Issue`):** має бути строго більшою за 0 (`ArgumentOutOfRangeException`).
-* **Заборона перевитрати (`Issue`):** не можна списати більше товару, ніж є в наявності (`InvalidOperationException`).
-* **Життєвий цикл (`ChangeStatus`):** заборонено недопустимі переходи між станами `Draft`, `Confirmed`, `Cancelled` та операції зі скасованим товаром (`InvalidOperationException`).
-* **Правила складу (`Warehouse.AddProduct`):** заборонено додавати скасований товар, дублікати `Sku` або перевищувати ліміт у 5 позицій (`InvalidOperationException`).
+### Додаткові завдання
+1. **Декоратор кешування**: реалізовано клас `CachingCatalogStore` (патерн Decorator), який реалізує `ICatalogStore`, приймає внутрішнє сховище та оптимізує повторні читання.
+2. **Параметризований пошук**: метод `Find(Func<Product, bool> predicate)` в `ICatalogStore` та `Search` у `CatalogService` для гнучкої фільтрації записів.
+3. **Фабрика сховищ**: клас `StoreFactory.Create(string[] args)` у CLI, що ізолює логіку аналізу ключів командного рядка (`--file`, `--cache`) від `Program.cs`.
 
-### Виконані додаткові завдання
-1. **Зв'язок із тижнем 3 (`DomainImportMapper.ToDomain`):** конвертація `MixedImportResult` у доменні сутності через `FromDto()` зі збором помилок парсингу та порушень інваріантів.
-2. **Інваріант на дві сутності (`Warehouse` + `Product`):** перевірка статусу товару, унікальності `Sku` та ліміту місткості складу (`MaxProductsLimit = 5`) під час додавання товару на склад.
-3. **Явний стан (`enum ProductStatus`):** контроль переходів між станами `Draft`, `Confirmed`, `Cancelled` через `switch expression` (скасування підтвердженого товару дозволено лише при `Quantity == 0`).
-
-### Запуск демонстрації
+### Команди запуску
 ```bash
+# 1. Режим InMemory
 dotnet run --project src/Cli
+
+# 2. Режим InMemory + Caching Decorator
+dotnet run --project src/Cli -- --cache
+
+# 3. Режим FileStore
+dotnet run --project src/Cli -- --file
+
+# 4. Режим FileStore + Caching Decorator
+dotnet run --project src/Cli -- --file --cache
