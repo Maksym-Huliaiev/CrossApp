@@ -1,28 +1,22 @@
-## Лабораторна робота 5: Сервісний шар, сховища та ручний DI
+## Лабораторна робота 6: Доменні події, делегати Action/Func, лямбди
 
 ### Основна частина
-* **Інтерфейс сховища**: `ICatalogStore` (Core/Abstractions)
-* **Реалізації сховища**:
-  * `InMemoryCatalogStore` — збереження у словнику в оперативній пам'яті на базі `SampleData`
-  * `FileCatalogStore` — персистентне файлове сховище з кешем і збереженням у `data/catalog.json` через DTO
-* **Сервісний шар**: `CatalogService` (Core/Services) — інкапсулює бізнес-операції `Add`, `Receive`, `Issue`, `Find`, `Search`
-* **Composition Root**: вибір реалізації сховища та створення залежностей без DI-контейнера
+* **Доменні події (Core)**:
+  * `CatalogChangeKind` (Core/Events) — перелічення типів операцій (`Added`, `Received`, `Issued`, `Removed`).
+  * `CatalogChangedEventArgs` (Core/Events) — тип аргументів події на базі `EventArgs` із даними про ID, дельту, залишок та час `At`.
+  * `CatalogService` (Core/Services) — оголошення `event EventHandler<CatalogChangedEventArgs>? Changed`, підняття сповіщення через приватний метод `OnChanged` (`Changed?.Invoke`) лише після успішної мутації стану (дотримання інваріантів). Шар Core не містить посилань на консоль чи файл.
+* **Обробка та підписка (Cli)**:
+  * Підписник 1: локальний метод `OnCatalogChanged` з виведенням у консоль та записом у журнал `logs/app.log`.
+  * Підписник 2: лямбда-вираз із замиканням `(_, _) => changes++` над локальною змінною лічильника подій.
+  * Керована підписка: демонстрація відписки оператором `-=` для `OnCatalogChanged` (тиха операція для логу, але фіксація лічильником).
+* **Сценарій відмови**: перехоплення порушення інваріантів (від'ємна кількість, неіснуючий ID) через `try/catch` — подія не генерується.
+* **Делегат пошуку**: фільтрація каталогу за допомогою `Func<Product, bool>` у методі `Search`.
 
 ### Додаткові завдання
-1. **Декоратор кешування**: реалізовано клас `CachingCatalogStore` (патерн Decorator), який реалізує `ICatalogStore`, приймає внутрішнє сховище та оптимізує повторні читання.
-2. **Параметризований пошук**: метод `Find(Func<Product, bool> predicate)` в `ICatalogStore` та `Search` у `CatalogService` для гнучкої фільтрації записів.
-3. **Фабрика сховищ**: клас `StoreFactory.Create(string[] args)` у CLI, що ізолює логіку аналізу ключів командного рядка (`--file`, `--cache`) від `Program.cs`.
+1. **Ручний DI з `INotificationSink`**: створено інтерфейс `INotificationSink` та реалізації `ConsoleSink`, `FileSink`, `CompositeNotificationSink`, які підключаються у `CatalogService` через конструктор поруч із подією.
+2. **Зворотний виклик (callback)**: реалізовано метод `ImportProducts` із параметром `Action<string>? onLineSkipped` для звітування про пропущені рядки без переривання імпорту.
+3. **Теоретичне дослідження**: письмово обґрунтовано причини вимушеного використання `async void` в обробниках подій та його ризики (Fire-and-Forget, неперехоплювані аварійні винятки, гонитва потоків).
 
-### Команди запуску
+### Команда запуску
 ```bash
-# 1. Режим InMemory
 dotnet run --project src/Cli
-
-# 2. Режим InMemory + Caching Decorator
-dotnet run --project src/Cli -- --cache
-
-# 3. Режим FileStore
-dotnet run --project src/Cli -- --file
-
-# 4. Режим FileStore + Caching Decorator
-dotnet run --project src/Cli -- --file --cache
