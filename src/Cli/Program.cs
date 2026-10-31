@@ -19,17 +19,17 @@ switch (command)
         var fileArgIndex = Array.IndexOf(args, "--file");
         var dataPath = fileArgIndex >= 0 && fileArgIndex + 1 < args.Length
             ? args[fileArgIndex + 1]
-            : (args.Length > 1 && !args[1].StartsWith("--") ? args[1] : "data/catalog.json");
+            : (args.Length > 1 && !args[1].StartsWith("--") ? args[1] : "data/import.json");
 
         using (var cts = new CancellationTokenSource())
         {
-            cts.CancelAfter(TimeSpan.FromMilliseconds(500));
-
-            Console.CancelKeyPress += (_, e) =>
+            ConsoleCancelEventHandler cancelHandler = (_, e) =>
             {
                 e.Cancel = true;
                 cts.Cancel();
             };
+
+            Console.CancelKeyPress += cancelHandler;
 
             try
             {
@@ -47,6 +47,31 @@ switch (command)
             catch (FileNotFoundException)
             {
                 Console.WriteLine($"Файл не знайдено: {dataPath}");
+            }
+            finally
+            {
+                Console.CancelKeyPress -= cancelHandler;
+            }
+        }
+        break;
+
+    case "extra-stream":
+        var streamPath = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : "data/import.json";
+        using (var streamCts = new CancellationTokenSource())
+        {
+            var progress = new Progress<int>(percent =>
+            {
+                Console.Write($"\r[Прогрес імпорту]: {percent}%");
+            });
+
+            try
+            {
+                var count = await service.ImportStreamAsync(new JsonCatalogImporter(), streamPath, progress, streamCts.Token);
+                Console.WriteLine($"\nУспішно імпортовано через IAsyncEnumerable: {count}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"\nПомилка: {ex.Message}");
             }
         }
         break;
@@ -141,7 +166,7 @@ switch (command)
         break;
 
     default:
-        Console.WriteLine("import | report-top | report-low | report-groups | report-sum | demo-deferred | extra-join | extra-top-ext | extra-query-syntax | extra-benchmark");
+        Console.WriteLine("import | extra-stream | report-top | report-low | report-groups | report-sum | demo-deferred | extra-join | extra-top-ext | extra-query-syntax | extra-benchmark");
         break;
 }
 

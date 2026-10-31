@@ -1,6 +1,4 @@
 ﻿using Xunit;
-using Core;
-using Core.Abstractions;
 using Core.Domain;
 using Core.Events;
 using Core.Reports;
@@ -9,37 +7,29 @@ using Core.Storage;
 
 namespace Core.Tests;
 
-public static class TestData
-{
-    public static List<Product> Items() => new()
-    {
-        Product.Create("1", "SKU-BIG", "Саморізи 35мм", "шт", 2500),
-        Product.Create("2", "SKU-MID", "Цегла силікатна", "шт", 1500),
-        Product.Create("3", "SKU-LOW", "Клей монтажний", "шт", 5)
-    };
-}
-
-public class CatalogServiceTests
+public class UnitTest1
 {
     [Fact]
     public void Receive_WithNegativeQuantity_Throws_AndKeepsState()
     {
         var store = new InMemoryCatalogStore();
+        var product = Product.Create("p1", "SKU-001", "Цемент М500", "мішок", 10);
+        store.Add(product);
         var service = new CatalogService(store);
-        var p = service.Add("SKU-1", "Цемент М400 25кг", "мішок", 10);
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => service.Receive(p.Id, -5));
-        Assert.Equal(10, store.GetById(p.Id)!.Quantity);
+        Assert.Throws<ArgumentOutOfRangeException>(() => service.Receive("p1", -5));
+        Assert.Equal(10, service.Find("p1")?.Quantity);
     }
 
     [Fact]
     public void Add_RaisesChangedExactlyOnce()
     {
-        var service = new CatalogService(new InMemoryCatalogStore());
+        var store = new InMemoryCatalogStore();
+        var service = new CatalogService(store);
         var events = new List<CatalogChangedEventArgs>();
         service.Changed += (_, e) => events.Add(e);
 
-        service.Add("SKU-2", "Гвинт", "шт", 7);
+        service.Add("SKU-002", "Пісок річковий", "т", 5);
 
         Assert.Single(events);
         Assert.Equal(CatalogChangeKind.Added, events[0].Kind);
@@ -48,17 +38,34 @@ public class CatalogServiceTests
     [Theory]
     [InlineData(10, 1)]
     [InlineData(1, 0)]
-    public void LowStock_CountsOnlyBelowThreshold(int threshold, int expected)
+    public void LowStock_CountsOnlyBelowThreshold(int threshold, int expectedCount)
     {
-        var result = ReportService.LowStock(TestData.Items(), threshold);
-        Assert.Equal(expected, result.Count);
+        var items = new List<Product>
+        {
+            Product.Create("p1", "SKU-001", "Цегла", "шт", 5),
+            Product.Create("p2", "SKU-002", "Брус", "м", 20)
+        };
+
+        var result = ReportService.LowStock(items, threshold);
+
+        Assert.Equal(expectedCount, result.Count);
     }
 
     [Fact]
     public void TopByQuantity_IsDeterministic()
     {
-        var top = ReportService.TopByQuantity(TestData.Items(), 2).Select(p => p.Sku);
-        Assert.Equal(new[] { "SKU-BIG", "SKU-MID" }, top);
+        var items = new List<Product>
+        {
+            Product.Create("p1", "SKU-MID", "Шпаклівка", "мішок", 20),
+            Product.Create("p2", "SKU-BIG", "Гіпсокартон", "лист", 50),
+            Product.Create("p3", "SKU-LOW", "Ґрунтовка", "л", 5)
+        };
+
+        var result = ReportService.TopByQuantity(items, 2);
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal("SKU-BIG", result[0].Sku);
+        Assert.Equal("SKU-MID", result[1].Sku);
     }
 
     [Fact]
@@ -68,18 +75,27 @@ public class CatalogServiceTests
         await cts.CancelAsync();
         var service = new CatalogService(new InMemoryCatalogStore());
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            service.ImportAsync(new JsonCatalogImporter(), "any.json", cts.Token));
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(tempFile, "[]");
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                service.ImportAsync(new JsonCatalogImporter(), tempFile, cts.Token));
+        }
+        finally
+        {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
     }
 
     [Fact]
     public async Task ImportAsync_CorruptedData_ThrowsDomainException()
     {
+        var service = new CatalogService(new InMemoryCatalogStore());
         var tempFile = Path.GetTempFileName();
         try
         {
-            await File.WriteAllTextAsync(tempFile, "[{\"Id\": \"99\", \"Sku\": \"\", \"Name\": \"Тест\", \"Unit\": \"шт\", \"Quantity\": -5}]");
-            var service = new CatalogService(new InMemoryCatalogStore());
+            await File.WriteAllTextAsync(tempFile, "[{\"Id\": \"bad-1\", \"Sku\": \"\", \"Name\": \"Брак\", \"Unit\": \"шт\", \"Quantity\": 1}]");
 
             var ex = await Assert.ThrowsAsync<DomainException>(() =>
                 service.ImportAsync(new JsonCatalogImporter(), tempFile));
@@ -88,10 +104,34 @@ public class CatalogServiceTests
         }
         finally
         {
-            if (File.Exists(tempFile))
-            {
-                File.Delete(tempFile);
-            }
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task ImportAsync_LinkedTokens_ThrowsOnTimeout()
+    {
+        using var userCts = new CancellationTokenSource();
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(userCts.Token, timeoutCts.Token);
+
+        var tempFile = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(tempFile, "[{\"Id\": \"t1\", \"Sku\": \"SKU-T\", \"Name\": \"Тест\", \"Unit\": \"шт\", \"Quantity\": 10}]");
+            var service = new CatalogService(new InMemoryCatalogStore());
+
+            await Task.Delay(100);
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                service.ImportAsync(new JsonCatalogImporter(), tempFile, linkedCts.Token));
+
+            Assert.True(timeoutCts.IsCancellationRequested);
+            Assert.False(userCts.IsCancellationRequested);
+        }
+        finally
+        {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
         }
     }
 }

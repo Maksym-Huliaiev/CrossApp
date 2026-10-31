@@ -111,6 +111,28 @@ public sealed class CatalogService
         return added;
     }
 
+    // Додаткове завдання 1 та 3
+    public async Task<int> ImportStreamAsync(
+        ICatalogImporter importer, 
+        string path, 
+        IProgress<int>? progress = null, 
+        CancellationToken ct = default)
+    {
+        var added = 0;
+
+        await foreach (var item in importer.StreamAsync(path, progress, ct))
+        {
+            if (_store.GetById(item.Id) is not null) 
+                continue;
+
+            _store.Add(item);
+            OnChanged(item, CatalogChangeKind.Added, item.Quantity);
+            added++;
+        }
+
+        return added;
+    }
+
     public Product? Find(string id) => _store.GetById(id);
 
     public IReadOnlyList<Product> Search(Func<Product, bool> predicate) =>
