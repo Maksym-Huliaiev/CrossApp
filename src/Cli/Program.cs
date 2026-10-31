@@ -1,7 +1,9 @@
 ﻿using Cli;
+using Core;
 using Core.Domain;
 using Core.Reports;
 using Core.Services;
+using Core.Storage;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
@@ -13,6 +15,42 @@ var items = service.All();
 
 switch (command)
 {
+    case "import":
+        var fileArgIndex = Array.IndexOf(args, "--file");
+        var dataPath = fileArgIndex >= 0 && fileArgIndex + 1 < args.Length
+            ? args[fileArgIndex + 1]
+            : (args.Length > 1 && !args[1].StartsWith("--") ? args[1] : "data/catalog.json");
+
+        using (var cts = new CancellationTokenSource())
+        {
+            cts.CancelAfter(TimeSpan.FromMilliseconds(500));
+
+            Console.CancelKeyPress += (_, e) =>
+            {
+                e.Cancel = true;
+                cts.Cancel();
+            };
+
+            try
+            {
+                var added = await service.ImportAsync(new JsonCatalogImporter(), dataPath, cts.Token);
+                Console.WriteLine($"Імпортовано записів: {added}");
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("Імпорт скасовано.");
+            }
+            catch (DomainException ex)
+            {
+                Console.WriteLine($"Дані відхилено: {ex.Message}");
+            }
+            catch (FileNotFoundException)
+            {
+                Console.WriteLine($"Файл не знайдено: {dataPath}");
+            }
+        }
+        break;
+
     case "report-top":
         Print(ReportService.TopByQuantity(items, 5));
         break;
@@ -103,7 +141,7 @@ switch (command)
         break;
 
     default:
-        Console.WriteLine("report-top | report-low | report-groups | report-sum | demo-deferred | extra-join | extra-top-ext | extra-query-syntax | extra-benchmark");
+        Console.WriteLine("import | report-top | report-low | report-groups | report-sum | demo-deferred | extra-join | extra-top-ext | extra-query-syntax | extra-benchmark");
         break;
 }
 
