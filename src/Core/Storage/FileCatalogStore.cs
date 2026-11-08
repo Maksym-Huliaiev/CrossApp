@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Core.Abstractions;
 using Core.Domain;
@@ -7,7 +8,13 @@ namespace Core.Storage;
 
 public sealed class FileCatalogStore(string path) : ICatalogStore
 {
-    private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions Options = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
     private readonly Dictionary<string, Product> _cache = new(StringComparer.OrdinalIgnoreCase);
     private readonly string _path = Path.GetFullPath(path);
     private bool _loaded;
@@ -18,7 +25,7 @@ public sealed class FileCatalogStore(string path) : ICatalogStore
         if (File.Exists(_path))
         {
             var json = File.ReadAllText(_path);
-            var dtos = JsonSerializer.Deserialize<List<ProductDto>>(json) ?? [];
+            var dtos = JsonSerializer.Deserialize<List<ProductDto>>(json, Options) ?? [];
             foreach (var dto in dtos)
             {
                 var p = Product.FromDto(dto);
@@ -37,7 +44,9 @@ public sealed class FileCatalogStore(string path) : ICatalogStore
         }
 
         var dtos = _cache.Values.Select(p => p.ToDto()).ToList();
-        File.WriteAllText(_path, JsonSerializer.Serialize(dtos, Options));
+        var tmp = _path + ".tmp";
+        File.WriteAllText(tmp, JsonSerializer.Serialize(dtos, Options));
+        File.Move(tmp, _path, overwrite: true);
     }
 
     public IReadOnlyList<Product> List()

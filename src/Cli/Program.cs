@@ -1,20 +1,68 @@
-﻿using Cli;
+﻿using System.Reflection;
+using Cli;
 using Core;
+using Core.Configuration;
 using Core.Domain;
 using Core.Reports;
 using Core.Services;
 using Core.Storage;
+using Microsoft.Extensions.Configuration;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-var store = StoreFactory.Create(args);
+// 1. Визначення назви середовища (за замовчуванням Development)[cite: 4]
+var envName = Environment.GetEnvironmentVariable("CROSSAPP_ENVIRONMENT") ?? "Development";
+
+// 2. Побудова ланцюжка конфігурації за пріоритетами[cite: 2, 4]
+var config = new ConfigurationBuilder()
+    .SetBasePath(AppContext.BaseDirectory)
+    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+    .AddJsonFile($"appsettings.{envName}.json", optional: true)
+    .AddUserSecrets(Assembly.GetExecutingAssembly(), optional: true)
+    .AddEnvironmentVariables(prefix: "CROSSAPP_")
+    .AddCommandLine(args)
+    .Build();
+
+// 3. Біндинг об'єкта AppOptions[cite: 3, 4]
+var options = config.Get<AppOptions>() ?? new AppOptions();
+
+// 4. Підтримка простої змінної CROSSAPP_DATA_PATH (вимога п. 4 методички)[cite: 3, 4]
+var legacyDataPath = Environment.GetEnvironmentVariable("CROSSAPP_DATA_PATH");
+var storage = new StorageOptions
+{
+    DataPath = !string.IsNullOrWhiteSpace(legacyDataPath) ? legacyDataPath : options.Storage.DataPath,
+    FileName = options.Storage.FileName
+};
+
+// 5. Отримання кросплатформного абсолютного шляху відносно каталогу програми[cite: 1, 4]
+var fullDataPath = storage.ResolveFullPath(AppContext.BaseDirectory);
+var apiKey = config["Integration:ApiKey"];
+
+// 6. Обов'язковий вивід згідно з очікуваним виводом методички[cite: 4, 7]
+Console.WriteLine($"Файл даних: {fullDataPath}");
+Console.WriteLine(apiKey is null ? "ApiKey: не заданий" : $"ApiKey: присутній, довжина {apiKey.Length}");
+
+// 7. Сховище та сервіс
+var store = new FileCatalogStore(fullDataPath);
 var service = new CatalogService(store);
 
-var command = args.FirstOrDefault(a => !a.StartsWith("--")) ?? "report-top";
+// Команда за замовчуванням — "export"
+var command = args.FirstOrDefault(a => !a.StartsWith("--")) ?? "export";
 var items = service.All();
 
 switch (command)
 {
+    case "export":
+        // Якщо каталог порожній, додамо зразок запису з методички для наповнення items.json[cite: 7]
+        if (store.List().Count == 0)
+        {
+            store.Add(Product.Create("a1b2c3d4", "A-100", "Цемент М400", "мішок", 40));
+        }
+
+        var exported = store.List();
+        Console.WriteLine($"Експортовано {exported.Count} записи.");
+        break;
+
     case "import":
         var fileArgIndex = Array.IndexOf(args, "--file");
         var dataPath = fileArgIndex >= 0 && fileArgIndex + 1 < args.Length
@@ -166,7 +214,7 @@ switch (command)
         break;
 
     default:
-        Console.WriteLine("import | extra-stream | report-top | report-low | report-groups | report-sum | demo-deferred | extra-join | extra-top-ext | extra-query-syntax | extra-benchmark");
+        Console.WriteLine("export | import | extra-stream | report-top | report-low | report-groups | report-sum | demo-deferred | extra-join | extra-top-ext | extra-query-syntax | extra-benchmark");
         break;
 }
 
