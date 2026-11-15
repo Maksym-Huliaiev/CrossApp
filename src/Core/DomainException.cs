@@ -1,4 +1,4 @@
-namespace Core;
+namespace Core.Domain;
 
 public sealed class DomainException : Exception
 {

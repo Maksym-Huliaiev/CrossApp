@@ -1,50 +1,22 @@
-# Складський облік будівельних матеріалів (CrossApp)
+Лабораторна робота 10: Minimal API
 
-Кросплатформна консольна система обліку та аналітики будівельних матеріалів на платформі .NET 10. Проєкт демонструє побудову аналітичних конвеєрів за допомогою LINQ to Objects (ЛР №7), а також надійний асинхронний імпорт даних із кооперативним скасуванням, потоковою обробкою та високим тестовим покриттям (ЛР №8).
+Створення HTTP API для доменного шару з використанням ASP.NET Core Minimal API, DTO, валідації та OpenAPI (Scalar UI).
+Додаткові завдання: реалізовано параметри пагінації/пошуку (page, pageSize, search) та власний обробник DomainExceptionHandler для перехоплення помилок бізнес-логіки (повертає 409 Conflict замість 500).
 
----
+Команди та запити (ЛР №10)
 
-## Лабораторна робота 8: Асинхронний I/O, скасування та потоки даних
+Запуск API сервера:
+dotnet run --project src/Api --urls http://localhost:5080
+(Документація Scalar UI буде доступна за адресою: http://localhost:5080/scalar/v1)
 
-Реалізовано асинхронне завантаження каталогу товарів із зовнішніх JSON-джерел (`JsonCatalogImporter`, `CatalogService`), обробку доменних помилок без переривання роботи застосунку, підтримку `CancellationToken`, відстеження прогресу через `IProgress<int>` та потокове читання великих файлів.
+Успішне створення товару (POST -> 201 Created):
+curl -i -X POST http://localhost:5080/api/products -H "Content-Type: application/json" -d '{"sku":"A-100","name":"Дошки","unit":"шт","quantity":10}'
 
-### Команди імпорту (ЛР №8)
+Перевірка валідації (POST -> 400 Bad Request):
+curl -i -X POST http://localhost:5080/api/products -H "Content-Type: application/json" -d '{"sku":"","name":"","unit":"","quantity":-1}'
 
-* `dotnet run --project src/Cli -- import data/import.json` — асинхронне завантаження коректного JSON-файлу у сховище із захистом від дублікатів.
-* `dotnet run --project src/Cli -- import data/bad.json` — демонстрація відхилення некоректних даних і перехоплення бізнес-винятку `DomainException`.
-* `dotnet run --project src/Cli -- import data/no_file.json` — обробка відсутності файлу через виняток `FileNotFoundException`.
-* `dotnet run --project src/Cli -- extra-stream data/import.json` — потоковий імпорт через `IAsyncEnumerable<Product>` із динамічним відображенням відсотків виконання (`[Прогрес імпорту]: 100%`) за допомогою `IProgress<int>`.
+[Додатково 1] Пагінація та пошук (GET -> 200 OK):
+Отримання списку товарів з фільтрацією за пошуковим словом та поділом на сторінки. API повертає об'єкт формату { items, total }
 
-### Тестування та метрики якості
-
-* `dotnet test` — виконання 8 модульних тестів (xUnit), що перевіряють бізнес-інваріанти, події, розрахунки звітів, скасування за токеном, доменні винятки та таймаут через зв'язані токени.
-* `dotnet test --collect:"XPlat Code Coverage"` — запуск тестів зі збором метрик покриття коду у формат Cobertura XML (доменний шар `Core` покритий на >90%).
-
----
-
-## Лабораторна робота 7: Звіти через LINQ to Objects
-
-Аналітичне опрацювання колекції номенклатури. Уся логіка запитів інкапсульована в `ReportService`, результати повертаються у вигляді незмінних DTO (`StockLine`, `GroupSummary`).
-
-### Основні звіти (ЛР №7)
-
-* `dotnet run --project src/Cli -- report-top` — топ-5 позицій із найбільшим залишком на складі (детерміноване впорядкування за спаданням кількості та за SKU).
-* `dotnet run --project src/Cli -- report-low` — перелік дефіцитних товарів із залишком менше 10 одиниць.
-* `dotnet run --project src/Cli -- report-groups` — групування номенклатури за одиницями виміру (`GroupJoin`/`GroupBy`) з підрахунком кількості позицій та сумарного залишку.
-* `dotnet run --project src/Cli -- report-sum` — агрегація каталогу: загальна кількість найменувань, сумарний залишок, середнє значення та максимум.
-* `dotnet run --project src/Cli -- demo-deferred` — демонстрація концепції відкладеного виконання (`deferred execution`) проти матеріалізованого знімка (`ToList()`) під час мутації джерела.
-
-### Додаткові звіти (ЛР №7)
-
-* `dotnet run --project src/Cli -- extra-join` — поєднання товарів із журналом складських рухів (`StockMovement`) за ключем `ProductId`.
-* `dotnet run --project src/Cli -- extra-top-ext` — робота власного узагальненого методу-розширення `TopBy`.
-* `dotnet run --project src/Cli -- extra-query-syntax` — агрегація за групами з використанням декларативного синтаксису запитів (`from ... group ... into`).
-* `dotnet run --project src/Cli -- extra-benchmark` — порівняльний аналіз швидкодії на 100 000 записах ланцюжка з проміжним `ToList()` та без нього.
-
----
-
-## Архітектурні особливості
-
-* **Кооперативне скасування:** використання `ct.ThrowIfCancellationRequested()` на кожній ітерації парсингу та зв'язаних токенів `CancellationTokenSource.CreateLinkedTokenSource(userToken, timeoutToken)`.
-* **Потокова обробка:** генераторні методи з поверненням `IAsyncEnumerable<T>` та атрибутом `[EnumeratorCancellation]` для економії оперативної пам'яті.
-* **Доменна валідація:** фабричні методи сутностей не допускають створення невалідного стану (від'ємна кількість, порожній SKU), конвертуючи синтаксичні вади в `DomainException`.
+[Додатково 3] Перехоплення бізнес-помилок (DomainException -> 409 Conflict):
+Глобальний обробник DomainExceptionHandler інтегровано в пайплайн застосунку. Якщо під час POST/PUT запитів порушується логіка доменного шару (викидається DomainException), сервер не падає з критичною помилкою 500 Internal Server Error, а безпечно перехоплює її та повертає статус 409 Conflict із детальним описом проблеми у стандарті ProblemDetails.
