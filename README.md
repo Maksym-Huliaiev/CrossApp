@@ -15,8 +15,15 @@ curl -i -X POST http://localhost:5080/api/products -H "Content-Type: application
 Перевірка валідації (POST -> 400 Bad Request):
 curl -i -X POST http://localhost:5080/api/products -H "Content-Type: application/json" -d '{"sku":"","name":"","unit":"","quantity":-1}'
 
-[Додатково 1] Пагінація та пошук (GET -> 200 OK):
-Отримання списку товарів з фільтрацією за пошуковим словом та поділом на сторінки. API повертає об'єкт формату { items, total }
+## База даних
+Проєкт використовує SQLite. Файл бази даних зберігається за шляхом `src/Api/data/app.db`.
+Рядок підключення знаходиться в `appsettings.json` у секції `ConnectionStrings:AppDb`.
 
-[Додатково 3] Перехоплення бізнес-помилок (DomainException -> 409 Conflict):
-Глобальний обробник DomainExceptionHandler інтегровано в пайплайн застосунку. Якщо під час POST/PUT запитів порушується логіка доменного шару (викидається DomainException), сервер не падає з критичною помилкою 500 Internal Server Error, а безпечно перехоплює її та повертає статус 409 Conflict із детальним описом проблеми у стандарті ProblemDetails.
+### Міграції
+Для застосування змін схеми бази даних використовуйте інструмент `dotnet-ef`:
+
+- Створення нової міграції: `dotnet ef migrations add <НазваМіграції> --project src/Infrastructure --startup-project src/Api`
+- Оновлення бази даних (застосування міграцій): `dotnet ef database update --project src/Infrastructure --startup-project src/Api`
+
+### Скидання бази даних
+Якщо потрібно повністю очистити базу даних, зупиніть сервер та видаліть файл `src/Api/data/app.db` разом з `app.db-shm` та `app.db-wal`. При наступному запуску застосунку база даних буде автоматично перестворена порожньою на основі міграцій.
