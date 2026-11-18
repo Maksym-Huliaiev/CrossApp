@@ -24,40 +24,40 @@ public sealed class CatalogService
         _sink?.Notify(args);
     }
 
-    public Product Add(string sku, string name, string unit, int quantity)
+    public async Task<Product> AddAsync(string sku, string name, string unit, int quantity, CancellationToken ct = default)
     {
         var product = Product.Create(Guid.NewGuid().ToString("N")[..8], sku, name, unit, quantity);
-        _store.Add(product);
+        await _store.AddAsync(product, ct);
         OnChanged(product, CatalogChangeKind.Added, quantity);
         return product;
     }
 
-    public void Receive(string id, int quantity)
+    public async Task ReceiveAsync(string id, int quantity, CancellationToken ct = default)
     {
-        var product = _store.GetById(id)
+        var product = await _store.GetByIdAsync(id, ct)
             ?? throw new InvalidOperationException($"Немає запису з id={id}.");
 
         product.RegisterArrival(quantity);
-        _store.Update(product);
+        await _store.UpdateAsync(product, ct);
         OnChanged(product, CatalogChangeKind.Received, quantity);
     }
 
-    public void Issue(string id, int quantity)
+    public async Task IssueAsync(string id, int quantity, CancellationToken ct = default)
     {
-        var product = _store.GetById(id)
+        var product = await _store.GetByIdAsync(id, ct)
             ?? throw new InvalidOperationException($"Немає запису з id={id}.");
 
         product.Issue(quantity);
-        _store.Update(product);
+        await _store.UpdateAsync(product, ct);
         OnChanged(product, CatalogChangeKind.Issued, -quantity);
     }
 
-    public bool Remove(string id)
+    public async Task<bool> RemoveAsync(string id, CancellationToken ct = default)
     {
-        var product = _store.GetById(id);
+        var product = await _store.GetByIdAsync(id, ct);
         if (product is null) return false;
 
-        var removed = _store.Remove(id);
+        var removed = await _store.RemoveAsync(id, ct);
         if (removed)
         {
             OnChanged(product, CatalogChangeKind.Removed, -product.Quantity);
@@ -65,12 +65,13 @@ public sealed class CatalogService
         return removed;
     }
 
-    public int ImportProducts(IEnumerable<string> rawLines, Action<string>? onLineSkipped = null)
+    public async Task<int> ImportProductsAsync(IEnumerable<string> rawLines, Action<string>? onLineSkipped = null, CancellationToken ct = default)
     {
         int importedCount = 0;
 
         foreach (var line in rawLines)
         {
+            ct.ThrowIfCancellationRequested();
             var parts = line.Split(';', StringSplitOptions.TrimEntries);
 
             if (parts.Length < 4)
@@ -85,7 +86,7 @@ public sealed class CatalogService
                 continue;
             }
 
-            Add(parts[0], parts[1], parts[2], quantity);
+            await AddAsync(parts[0], parts[1], parts[2], quantity, ct);
             importedCount++;
         }
 
@@ -100,10 +101,10 @@ public sealed class CatalogService
         foreach (var item in items)
         {
             ct.ThrowIfCancellationRequested();
-            if (_store.GetById(item.Id) is not null) 
+            if (await _store.GetByIdAsync(item.Id, ct) is not null)
                 continue;
 
-            _store.Add(item);
+            await _store.AddAsync(item, ct);
             OnChanged(item, CatalogChangeKind.Added, item.Quantity);
             added++;
         }
@@ -113,19 +114,19 @@ public sealed class CatalogService
 
     // Додаткове завдання 1 та 3
     public async Task<int> ImportStreamAsync(
-        ICatalogImporter importer, 
-        string path, 
-        IProgress<int>? progress = null, 
+        ICatalogImporter importer,
+        string path,
+        IProgress<int>? progress = null,
         CancellationToken ct = default)
     {
         var added = 0;
 
         await foreach (var item in importer.StreamAsync(path, progress, ct))
         {
-            if (_store.GetById(item.Id) is not null) 
+            if (await _store.GetByIdAsync(item.Id, ct) is not null)
                 continue;
 
-            _store.Add(item);
+            await _store.AddAsync(item, ct);
             OnChanged(item, CatalogChangeKind.Added, item.Quantity);
             added++;
         }
@@ -133,10 +134,15 @@ public sealed class CatalogService
         return added;
     }
 
-    public Product? Find(string id) => _store.GetById(id);
+    public Task<Product?> FindAsync(string id, CancellationToken ct = default) =>
+        _store.GetByIdAsync(id, ct);
 
-    public IReadOnlyList<Product> Search(Func<Product, bool> predicate) =>
-        _store.List().Where(predicate).ToList();
+    public async Task<IReadOnlyList<Product>> SearchAsync(Func<Product, bool> predicate, CancellationToken ct = default)
+    {
+        var items = await _store.ListAsync(ct);
+        return items.Where(predicate).ToList();
+    }
 
-    public IReadOnlyList<Product> All() => _store.List();
+    public Task<IReadOnlyList<Product>> AllAsync(CancellationToken ct = default) =>
+        _store.ListAsync(ct);
 }

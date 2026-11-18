@@ -19,12 +19,12 @@ public sealed class FileCatalogStore(string path) : ICatalogStore
     private readonly string _path = Path.GetFullPath(path);
     private bool _loaded;
 
-    private void EnsureLoaded()
+    private async Task EnsureLoadedAsync(CancellationToken ct)
     {
         if (_loaded) return;
         if (File.Exists(_path))
         {
-            var json = File.ReadAllText(_path);
+            var json = await File.ReadAllTextAsync(_path, ct);
             var dtos = JsonSerializer.Deserialize<List<ProductDto>>(json, Options) ?? [];
             foreach (var dto in dtos)
             {
@@ -35,7 +35,7 @@ public sealed class FileCatalogStore(string path) : ICatalogStore
         _loaded = true;
     }
 
-    private void Flush()
+    private async Task FlushAsync(CancellationToken ct)
     {
         var directory = Path.GetDirectoryName(_path);
         if (!string.IsNullOrEmpty(directory))
@@ -45,54 +45,54 @@ public sealed class FileCatalogStore(string path) : ICatalogStore
 
         var dtos = _cache.Values.Select(p => p.ToDto()).ToList();
         var tmp = _path + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(dtos, Options));
+        await File.WriteAllTextAsync(tmp, JsonSerializer.Serialize(dtos, Options), ct);
         File.Move(tmp, _path, overwrite: true);
     }
 
-    public IReadOnlyList<Product> List()
+    public async Task<IReadOnlyList<Product>> ListAsync(CancellationToken ct = default)
     {
-        EnsureLoaded();
+        await EnsureLoadedAsync(ct);
         return _cache.Values.ToList();
     }
 
-    public Product? GetById(string id)
+    public async Task<Product?> GetByIdAsync(string id, CancellationToken ct = default)
     {
-        EnsureLoaded();
+        await EnsureLoadedAsync(ct);
         return _cache.GetValueOrDefault(id);
     }
 
-    public void Add(Product item)
+    public async Task AddAsync(Product item, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(item);
-        EnsureLoaded();
+        await EnsureLoadedAsync(ct);
         if (_cache.ContainsKey(item.Id))
             throw new InvalidOperationException($"Запис з id={item.Id} уже існує.");
 
         _cache.Add(item.Id, item);
-        Flush();
+        await FlushAsync(ct);
     }
 
-    public void Update(Product item)
+    public async Task UpdateAsync(Product item, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(item);
-        EnsureLoaded();
+        await EnsureLoadedAsync(ct);
         _cache[item.Id] = item;
-        Flush();
+        await FlushAsync(ct);
     }
 
-    public bool Remove(string id)
+    public async Task<bool> RemoveAsync(string id, CancellationToken ct = default)
     {
-        EnsureLoaded();
+        await EnsureLoadedAsync(ct);
         if (!_cache.Remove(id)) return false;
 
-        Flush();
+        await FlushAsync(ct);
         return true;
     }
 
-    public IReadOnlyList<Product> Find(Func<Product, bool> predicate)
+    public async Task<IReadOnlyList<Product>> FindAsync(Func<Product, bool> predicate, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(predicate);
-        EnsureLoaded();
+        await EnsureLoadedAsync(ct);
         return _cache.Values.Where(predicate).ToList();
     }
 }

@@ -10,10 +10,10 @@ using Microsoft.Extensions.Configuration;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-// 1. Визначення назви середовища (за замовчуванням Development)[cite: 4]
+// 1. Визначення назви середовища (за замовчуванням Development)
 var envName = Environment.GetEnvironmentVariable("CROSSAPP_ENVIRONMENT") ?? "Development";
 
-// 2. Побудова ланцюжка конфігурації за пріоритетами[cite: 2, 4]
+// 2. Побудова ланцюжка конфігурації за пріоритетами
 var config = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
@@ -23,10 +23,10 @@ var config = new ConfigurationBuilder()
     .AddCommandLine(args)
     .Build();
 
-// 3. Біндинг об'єкта AppOptions[cite: 3, 4]
+// 3. Біндинг об'єкта AppOptions
 var options = config.Get<AppOptions>() ?? new AppOptions();
 
-// 4. Підтримка простої змінної CROSSAPP_DATA_PATH (вимога п. 4 методички)[cite: 3, 4]
+// 4. Підтримка простої змінної CROSSAPP_DATA_PATH
 var legacyDataPath = Environment.GetEnvironmentVariable("CROSSAPP_DATA_PATH");
 var storage = new StorageOptions
 {
@@ -34,11 +34,11 @@ var storage = new StorageOptions
     FileName = options.Storage.FileName
 };
 
-// 5. Отримання кросплатформного абсолютного шляху відносно каталогу програми[cite: 1, 4]
+// 5. Отримання кросплатформного абсолютного шляху відносно каталогу програми
 var fullDataPath = storage.ResolveFullPath(AppContext.BaseDirectory);
 var apiKey = config["Integration:ApiKey"];
 
-// 6. Обов'язковий вивід згідно з очікуваним виводом методички[cite: 4, 7]
+// 6. Обов'язковий вивід
 Console.WriteLine($"Файл даних: {fullDataPath}");
 Console.WriteLine(apiKey is null ? "ApiKey: не заданий" : $"ApiKey: присутній, довжина {apiKey.Length}");
 
@@ -48,18 +48,18 @@ var service = new CatalogService(store);
 
 // Команда за замовчуванням — "export"
 var command = args.FirstOrDefault(a => !a.StartsWith("--")) ?? "export";
-var items = service.All();
+var items = await service.AllAsync();
 
 switch (command)
 {
     case "export":
-        // Якщо каталог порожній, додамо зразок запису з методички для наповнення items.json[cite: 7]
-        if (store.List().Count == 0)
+        // Якщо каталог порожній, додамо зразок запису для наповнення items.json
+        if ((await store.ListAsync()).Count == 0)
         {
-            store.Add(Product.Create("a1b2c3d4", "A-100", "Цемент М400", "мішок", 40));
+            await store.AddAsync(Product.Create("a1b2c3d4", "A-100", "Цемент М400", "мішок", 40));
         }
 
-        var exported = store.List();
+        var exported = await store.ListAsync();
         Console.WriteLine($"Експортовано {exported.Count} записи.");
         break;
 
@@ -145,7 +145,7 @@ switch (command)
         break;
 
     case "demo-deferred":
-        var source = service.All().ToList();
+        var source = (await service.AllAsync()).ToList();
         var query = source.Where(p => p.Quantity < 10);
         Console.WriteLine($"Дефіцитних до змін: {query.Count()}");
 

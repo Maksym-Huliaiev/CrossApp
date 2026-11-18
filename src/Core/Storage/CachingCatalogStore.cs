@@ -9,11 +9,11 @@ public sealed class CachingCatalogStore(ICatalogStore innerStore) : ICatalogStor
     private readonly Dictionary<string, Product> _cache = new(StringComparer.OrdinalIgnoreCase);
     private bool _fullyLoaded;
 
-    public IReadOnlyList<Product> List()
+    public async Task<IReadOnlyList<Product>> ListAsync(CancellationToken ct = default)
     {
         if (!_fullyLoaded)
         {
-            var items = _innerStore.List();
+            var items = await _innerStore.ListAsync(ct);
             _cache.Clear();
             foreach (var item in items)
             {
@@ -25,14 +25,14 @@ public sealed class CachingCatalogStore(ICatalogStore innerStore) : ICatalogStor
         return _cache.Values.ToList();
     }
 
-    public Product? GetById(string id)
+    public async Task<Product?> GetByIdAsync(string id, CancellationToken ct = default)
     {
         if (_cache.TryGetValue(id, out var cached))
         {
             return cached;
         }
 
-        var item = _innerStore.GetById(id);
+        var item = await _innerStore.GetByIdAsync(id, ct);
         if (item is not null)
         {
             _cache[id] = item;
@@ -41,23 +41,23 @@ public sealed class CachingCatalogStore(ICatalogStore innerStore) : ICatalogStor
         return item;
     }
 
-    public void Add(Product item)
+    public async Task AddAsync(Product item, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(item);
-        _innerStore.Add(item);
+        await _innerStore.AddAsync(item, ct);
         _cache[item.Id] = item;
     }
 
-    public void Update(Product item)
+    public async Task UpdateAsync(Product item, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(item);
-        _innerStore.Update(item);
+        await _innerStore.UpdateAsync(item, ct);
         _cache[item.Id] = item;
     }
 
-    public bool Remove(string id)
+    public async Task<bool> RemoveAsync(string id, CancellationToken ct = default)
     {
-        var removed = _innerStore.Remove(id);
+        var removed = await _innerStore.RemoveAsync(id, ct);
         if (removed)
         {
             _cache.Remove(id);
@@ -66,11 +66,11 @@ public sealed class CachingCatalogStore(ICatalogStore innerStore) : ICatalogStor
         return removed;
     }
 
-    public IReadOnlyList<Product> Find(Func<Product, bool> predicate)
+    public async Task<IReadOnlyList<Product>> FindAsync(Func<Product, bool> predicate, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(predicate);
-        return _fullyLoaded 
-            ? _cache.Values.Where(predicate).ToList() 
-            : _innerStore.Find(predicate);
+        return _fullyLoaded
+            ? _cache.Values.Where(predicate).ToList()
+            : await _innerStore.FindAsync(predicate, ct);
     }
 }

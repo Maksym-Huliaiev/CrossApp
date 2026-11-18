@@ -10,26 +10,26 @@ namespace Core.Tests;
 public class UnitTest1
 {
     [Fact]
-    public void Receive_WithNegativeQuantity_Throws_AndKeepsState()
+    public async Task Receive_WithNegativeQuantity_Throws_AndKeepsState()
     {
         var store = new InMemoryCatalogStore();
         var product = Product.Create("p1", "SKU-001", "Цемент М500", "мішок", 10);
-        store.Add(product);
+        await store.AddAsync(product);
         var service = new CatalogService(store);
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => service.Receive("p1", -5));
-        Assert.Equal(10, service.Find("p1")?.Quantity);
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.ReceiveAsync("p1", -5));
+        Assert.Equal(10, (await service.FindAsync("p1"))?.Quantity);
     }
 
     [Fact]
-    public void Add_RaisesChangedExactlyOnce()
+    public async Task Add_RaisesChangedExactlyOnce()
     {
         var store = new InMemoryCatalogStore();
         var service = new CatalogService(store);
         var events = new List<CatalogChangedEventArgs>();
         service.Changed += (_, e) => events.Add(e);
 
-        service.Add("SKU-002", "Пісок річковий", "т", 5);
+        await service.AddAsync("SKU-002", "Пісок річковий", "т", 5);
 
         Assert.Single(events);
         Assert.Equal(CatalogChangeKind.Added, events[0].Kind);

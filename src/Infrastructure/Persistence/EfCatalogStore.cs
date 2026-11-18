@@ -13,30 +13,44 @@ public sealed class EfCatalogStore(AppDbContext db) : ICatalogStore
 
     private static ProductRow ToRow(Product p) => new()
     {
-        Id = p.Id, 
-        Sku = p.Sku, 
-        Name = p.Name, 
-        Unit = p.Unit, 
+        Id = p.Id,
+        Sku = p.Sku,
+        Name = p.Name,
+        Unit = p.Unit,
         Quantity = p.Quantity
     };
 
-    public IReadOnlyList<Product> List() => 
-        db.Products.AsNoTracking().OrderBy(x => x.Sku)
-          .AsEnumerable().Select(ToDomain).ToList();
+    public async Task<IReadOnlyList<Product>> ListAsync(CancellationToken ct = default)
+    {
+        var rows = await db.Products
+            .AsNoTracking()
+            .OrderBy(x => x.Sku)
+            .ToListAsync(ct);
 
-    public IReadOnlyList<Product> Find(Func<Product, bool> predicate) =>
-        List().Where(predicate).ToList();
+        return rows.Select(ToDomain).ToList();
+    }
 
-    public Product? GetById(string id) =>
-        db.Products.AsNoTracking().SingleOrDefault(x => x.Id == id) is { } row
-            ? ToDomain(row) : null;
+    public async Task<IReadOnlyList<Product>> FindAsync(Func<Product, bool> predicate, CancellationToken ct = default)
+    {
+        var items = await ListAsync(ct);
+        return items.Where(predicate).ToList();
+    }
 
-    public void Add(Product item) 
-    { 
+    public async Task<Product?> GetByIdAsync(string id, CancellationToken ct = default)
+    {
+        var row = await db.Products
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == id, ct);
+
+        return row is not null ? ToDomain(row) : null;
+    }
+
+    public async Task AddAsync(Product item, CancellationToken ct = default)
+    {
         try
         {
-            db.Products.Add(ToRow(item)); 
-            db.SaveChanges(); 
+            await db.Products.AddAsync(ToRow(item), ct);
+            await db.SaveChangesAsync(ct);
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqliteException { SqliteErrorCode: 19 })
         {
@@ -44,23 +58,30 @@ public sealed class EfCatalogStore(AppDbContext db) : ICatalogStore
         }
     }
 
-    public void Update(Product item)
+    public async Task UpdateAsync(Product item, CancellationToken ct = default)
     {
-        var row = db.Products.Single(x => x.Id == item.Id);
-        row.Sku = item.Sku;
-        row.Name = item.Name;
-        row.Unit = item.Unit;
-        row.Quantity = item.Quantity;
-        db.SaveChanges();
+        try
+        {
+            var row = await db.Products.SingleAsync(x => x.Id == item.Id, ct);
+            row.Sku = item.Sku;
+            row.Name = item.Name;
+            row.Unit = item.Unit;
+            row.Quantity = item.Quantity;
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is SqliteException { SqliteErrorCode: 19 })
+        {
+            throw new DomainException($"Товар з артикулом '{item.Sku}' вже існує.");
+        }
     }
 
-    public bool Remove(string id)
+    public async Task<bool> RemoveAsync(string id, CancellationToken ct = default)
     {
-        var row = db.Products.SingleOrDefault(x => x.Id == id);
+        var row = await db.Products.SingleOrDefaultAsync(x => x.Id == id, ct);
         if (row is null) return false;
-        
+
         db.Products.Remove(row);
-        db.SaveChanges();
+        await db.SaveChangesAsync(ct);
         return true;
     }
 }

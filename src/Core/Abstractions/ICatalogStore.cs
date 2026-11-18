@@ -4,12 +4,12 @@ namespace Core.Abstractions;
 
 public interface ICatalogStore
 {
-    IReadOnlyList<Product> List();
-    Product? GetById(string id);
-    void Add(Product item);
-    void Update(Product item);
-    bool Remove(string id);
+    Task<IReadOnlyList<Product>> ListAsync(CancellationToken ct = default);
+    Task<Product?> GetByIdAsync(string id, CancellationToken ct = default);
+    Task AddAsync(Product item, CancellationToken ct = default);
+    Task UpdateAsync(Product item, CancellationToken ct = default);
+    Task<bool> RemoveAsync(string id, CancellationToken ct = default);
 
     // Додаткове завдання 2: фільтрація за довільним предикатом
-    IReadOnlyList<Product> Find(Func<Product, bool> predicate);
+    Task<IReadOnlyList<Product>> FindAsync(Func<Product, bool> predicate, CancellationToken ct = default);
 }

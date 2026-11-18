@@ -8,30 +8,35 @@ public sealed class InMemoryCatalogStore(IEnumerable<Product>? seed = null) : IC
     private readonly Dictionary<string, Product> _items =
         (seed ?? []).ToDictionary(p => p.Id, StringComparer.OrdinalIgnoreCase);
 
-    public IReadOnlyList<Product> List() => _items.Values.ToList();
+    public Task<IReadOnlyList<Product>> ListAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<Product>>(_items.Values.ToList());
 
-    public Product? GetById(string id) => _items.GetValueOrDefault(id);
+    public Task<Product?> GetByIdAsync(string id, CancellationToken ct = default) =>
+        Task.FromResult(_items.GetValueOrDefault(id));
 
-    public void Update(Product item)
+    public Task UpdateAsync(Product item, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(item);
         _items[item.Id] = item;
+        return Task.CompletedTask;
     }
 
-    public bool Remove(string id) => _items.Remove(id);
+    public Task<bool> RemoveAsync(string id, CancellationToken ct = default) =>
+        Task.FromResult(_items.Remove(id));
 
-    public void Add(Product item)
+    public Task AddAsync(Product item, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(item);
         if (_items.ContainsKey(item.Id))
             throw new InvalidOperationException($"Запис з id={item.Id} уже існує.");
 
         _items.Add(item.Id, item);
+        return Task.CompletedTask;
     }
 
-    public IReadOnlyList<Product> Find(Func<Product, bool> predicate)
+    public Task<IReadOnlyList<Product>> FindAsync(Func<Product, bool> predicate, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(predicate);
-        return _items.Values.Where(predicate).ToList();
+        return Task.FromResult<IReadOnlyList<Product>>(_items.Values.Where(predicate).ToList());
     }
 }
