@@ -86,4 +86,23 @@ public sealed class ProductsApiClient(HttpClient http)
             return null;
         }
     }
+    public async Task<ApiResult> DeleteAsync(string id, CancellationToken ct = default)
+    {
+        try
+        {
+            using var response = await http.DeleteAsync($"api/products/{Uri.EscapeDataString(id)}", ct);
+
+            if (response.IsSuccessStatusCode)
+                return new ApiResult(true);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+                return new ApiResult(false, "Запис не знайдено — можливо, його вже видалили.");
+
+            return new ApiResult(false, $"Сервер повернув {(int)response.StatusCode}.");
+        }
+        catch (HttpRequestException)
+        {
+            return new ApiResult(false, "Api недоступний. Перевірте, чи запущено src/Api.");
+        }
+    }
 }

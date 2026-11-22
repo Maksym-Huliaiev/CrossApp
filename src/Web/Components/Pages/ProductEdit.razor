@@ -1,6 +1,7 @@
 @page "/products/new"
 @page "/products/{Id}"
 @rendermode InteractiveServer
+@implements IDisposable
 @using Web.Contracts
 @using Web.Services
 @inject ProductsApiClient Api
@@ -74,6 +75,8 @@ else if (editContext is not null)
     [Parameter]
     public string? Id { get; set; }
 
+    private readonly CancellationTokenSource _cts = new();
+
     private bool IsEdit => !string.IsNullOrWhiteSpace(Id);
     private ProductModel model = new();
     private EditContext? editContext;
@@ -93,7 +96,7 @@ else if (editContext is not null)
         {
             try
             {
-                var found = await Api.FindAsync(Id!);
+                var found = await Api.FindAsync(Id!, _cts.Token);
                 if (found is null)
                 {
                     notFound = true;
@@ -102,6 +105,10 @@ else if (editContext is not null)
                 }
 
                 model = found;
+            }
+            catch (OperationCanceledException)
+            {
+                return;
             }
             catch (HttpRequestException)
             {
@@ -129,28 +136,43 @@ else if (editContext is not null)
         errorMessage = null;
         messageStore.Clear();
 
-        var result = IsEdit
-            ? await Api.UpdateAsync(model)
-            : await Api.CreateAsync(model);
-
-        isSaving = false;
-
-        if (result.Ok)
+        try
         {
-            Nav.NavigateTo("/products");
-            return;
-        }
+            var result = IsEdit
+                ? await Api.UpdateAsync(model, _cts.Token)
+                : await Api.CreateAsync(model, _cts.Token);
 
-        errorMessage = result.Message ?? "Не вдалося зберегти запис.";
-
-        if (result.Errors is not null)
-        {
-            foreach (var (field, messages) in result.Errors)
+            if (result.Ok)
             {
-                messageStore.Add(editContext.Field(field), messages);
+                Nav.NavigateTo("/products");
+                return;
             }
 
-            editContext.NotifyValidationStateChanged();
+            errorMessage = result.Message ?? "Не вдалося зберегти запис.";
+
+            if (result.Errors is not null)
+            {
+                foreach (var (field, messages) in result.Errors)
+                {
+                    messageStore.Add(editContext.Field(field), messages);
+                }
+
+                editContext.NotifyValidationStateChanged();
+            }
         }
+        catch (OperationCanceledException)
+        {
+            // Запит скасовано при переході на іншу сторінку
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
     }
 }

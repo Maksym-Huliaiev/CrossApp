@@ -1,5 +1,6 @@
 @page "/products"
 @rendermode InteractiveServer
+@implements IDisposable
 @using Web.Contracts
 @using Web.Services
 @inject ProductsApiClient Api
@@ -15,15 +16,16 @@
 {
     <div class="alert alert-danger" role="alert">@error</div>
 }
-else if (items is null)
+
+@if (items is null && error is null)
 {
     <p><em>Завантаження...</em></p>
 }
-else if (items.Count == 0)
+else if (items is not null && items.Count == 0)
 {
     <p>Записів ще немає.</p>
 }
-else
+else if (items is not null)
 {
     <p class="text-muted small">
         Товари із залишком менше @LowStockThreshold підсвічено жовтим.
@@ -49,10 +51,31 @@ else
                     <td>@item.Quantity</td>
                     <td>@item.Unit</td>
                     <td>@(string.IsNullOrWhiteSpace(item.Note) ? "—" : item.Note)</td>
-                    <td class="text-end">
-                        <a class="btn btn-sm btn-outline-secondary" href="@($"/products/{item.Id}")">
-                            Редагувати
-                        </a>
+                    <td class="text-end text-nowrap">
+                        @if (confirmDeleteId == item.Id)
+                        {
+                            <span class="me-2 text-danger small">Видалити?</span>
+                            <button class="btn btn-sm btn-danger me-1"
+                                    disabled="@(deletingId == item.Id)"
+                                    @onclick="() => DeleteConfirmedAsync(item.Id)">
+                                @(deletingId == item.Id ? "..." : "Так")
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    disabled="@(deletingId == item.Id)"
+                                    @onclick="() => confirmDeleteId = null">
+                                Ні
+                            </button>
+                        }
+                        else
+                        {
+                            <a class="btn btn-sm btn-outline-secondary me-1" href="@($"/products/{item.Id}")">
+                                Редагувати
+                            </a>
+                            <button class="btn btn-sm btn-outline-danger"
+                                    @onclick="() => confirmDeleteId = item.Id">
+                                Видалити
+                            </button>
+                        }
                     </td>
                 </tr>
             }
@@ -62,18 +85,60 @@ else
 
 @code {
     private const int LowStockThreshold = 150;
+    private readonly CancellationTokenSource _cts = new();
+
     private List<ProductModel>? items;
     private string? error;
+    private string? confirmDeleteId;
+    private string? deletingId;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            items = await Api.ListAsync();
+            items = await Api.ListAsync(_cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Користувач залишив сторінку до завершення запиту
         }
         catch (HttpRequestException)
         {
             error = "Api недоступний. Перевірте, чи запущено src/Api.";
         }
+    }
+
+    private async Task DeleteConfirmedAsync(string id)
+    {
+        deletingId = id;
+        error = null;
+
+        try
+        {
+            var result = await Api.DeleteAsync(id, _cts.Token);
+            if (result.Ok)
+            {
+                items?.RemoveAll(x => x.Id == id);
+                confirmDeleteId = null;
+            }
+            else
+            {
+                error = result.Message ?? "Не вдалося видалити запис.";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Запит скасовано при переході на іншу сторінку
+        }
+        finally
+        {
+            deletingId = null;
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
     }
 }

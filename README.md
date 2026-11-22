@@ -1,35 +1,52 @@
-# Лабораторна робота 11: EF Core + SQLite
+# CrossApp
 
-Переведення HTTP API (`src/Api`) на постійне сховище даних **SQLite** за допомогою Entity Framework Core без зміни наявних маршрутів і контрактів.
+## Лабораторна робота 11 — EF Core + SQLite
+API (`src/Api`) переведено на базу даних **SQLite** через Entity Framework Core.
+- Робота з БД винесена в окремий проєкт `src/Infrastructure` (`AppDbContext`, `EfCatalogStore`, моделі `ProductRow` і `BatchRow`, зв'язок 1:N з каскадним видаленням).
+- Файл бази зберігається локально в `src/Api/data/app.db` (додано в `.gitignore`), рядок підключення — у `src/Api/appsettings.json` (`ConnectionStrings:AppDb`).
+- Дублікат артикулу (`Sku`) повертає `409 Conflict`.
+- Додаткове завдання: весь стек доступу до даних, сервіси, ендпоінти, `Cli` і тести переведено на `async/await`.
 
-## Що реалізовано
-- Створено окремий шар `src/Infrastructure` (`AppDbContext`, `EfCatalogStore`, persistence-моделі `ProductRow` і `BatchRow`) без додавання залежностей БД у `Core`.
-- Реалізовано зв'язок **1:N** між таблицями `Products` та `Batches` (`ON DELETE CASCADE`) і унікальний індекс на `Products.Sku`.
-- Замінено `InMemoryCatalogStore` (Singleton) на `EfCatalogStore` (**Scoped**).
-- Додано перехоплення помилки дубліката SKU (`SqliteErrorCode: 19`) з поверненням `409 Conflict` через `DomainExceptionHandler`.
-- Налаштовано автоматичне застосування міграцій при старті в середовищі `Development`.
-- **Додаткове завдання:** весь стек доступу до даних (`ICatalogStore`, `EfCatalogStore`, `InMemoryCatalogStore`, `FileCatalogStore`, `CachingCatalogStore`, `CatalogService`, `ProductEndpoints`, `Cli` та тести `Core.Tests`) переведено на асинхронні операції (`async/await` + `CancellationToken`).
+## Лабораторна робота 12 — Blazor-клієнт (`src/Web`)
+Додано веб-інтерфейс на Blazor, який працює з `src/Api` по HTTP і не має прямого доступу до БД (`src/Infrastructure`).
+- Режим: **Blazor Interactive Server** (`@rendermode InteractiveServer`) — C#-код виконується на сервері `Web`, оновлення в браузер ідуть через SignalR.
+- Конфігурація:
+  - `src/Web/appsettings.json` → `Api:BaseUrl` (`http://localhost:5080`)
+  - `src/Api/appsettings.json` → `Cors:WebOrigin` (`http://localhost:5090`)
+- Реалізовано список товарів (з підсвіткою залишку < 150), створення, редагування, обробку помилок (`400`, `404`, `409`, недоступний API).
+- Додаткові завдання: видалення з підтвердженням без перезавантаження сторінки та скасування запитів через `CancellationTokenSource`.
 
-## База даних
-- СУБД: **SQLite**
-- Шлях до файлу БД: `src/Api/data/app.db` (додано до `.gitignore` разом із `*.db-shm` та `*.db-wal`)
-- Рядок підключення: `src/Api/appsettings.json` → `ConnectionStrings:AppDb`
+---
 
-### Міграції
-Команди виконуються з кореня репозиторію:
+## Команди
 
-- Створення нової міграції:
-  ```bash
-  dotnet ef migrations add <НазваМіграції> --project src/Infrastructure --startup-project src/Api
-
-  запуск серва
-dotnet run --project src/Api
-
-додаткове 11
-dotnet build
-dotnet test
-
-список міграцій та бд
-
+### Лаба 11
+Міграції та перевірка БД:
+```bash
 dotnet ef migrations list --project src/Infrastructure --startup-project src/Api
 dotnet ef database update --project src/Infrastructure --startup-project src/Api
+```
+
+Запуск API:
+```bash
+dotnet run --project src/Api --urls http://localhost:5080
+```
+
+Збірка і тести:
+```bash
+dotnet build
+dotnet test
+```
+
+### Лаба 12 (потрібно два термінали)
+Термінал 1 — API (порт 5080):
+```bash
+dotnet run --project src/Api --urls http://localhost:5080
+```
+
+Термінал 2 — Blazor Web (порт 5090):
+```bash
+dotnet run --project src/Web --urls http://localhost:5090
+```
+
+Сторінка в браузері: `http://localhost:5090/products`
