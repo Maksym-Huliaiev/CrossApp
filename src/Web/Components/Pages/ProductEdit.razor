@@ -1,0 +1,156 @@
+@page "/products/new"
+@page "/products/{Id}"
+@rendermode InteractiveServer
+@using Web.Contracts
+@using Web.Services
+@inject ProductsApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>@(IsEdit ? "Редагування товару" : "Новий товар")</PageTitle>
+
+<h1>@(IsEdit ? "Редагування товару" : "Новий товар")</h1>
+
+@if (isLoading)
+{
+    <p><em>Завантаження...</em></p>
+}
+else if (notFound)
+{
+    <div class="alert alert-warning">
+        Запис не знайдено — можливо, його вже видалили.
+    </div>
+    <a class="btn btn-secondary" href="/products">Повернутися до списку</a>
+}
+else if (editContext is not null)
+{
+    @if (errorMessage is not null)
+    {
+        <div class="alert alert-danger" role="alert">@errorMessage</div>
+    }
+
+    <EditForm EditContext="editContext" OnValidSubmit="HandleValidSubmit" FormName="product-form">
+        <DataAnnotationsValidator />
+        <ValidationSummary class="text-danger" />
+
+        <div class="mb-3">
+            <label class="form-label" for="sku">Артикул (SKU)</label>
+            <InputText id="sku" class="form-control" @bind-Value="model.Sku" />
+            <ValidationMessage For="() => model.Sku" class="text-danger" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="name">Назва</label>
+            <InputText id="name" class="form-control" @bind-Value="model.Name" />
+            <ValidationMessage For="() => model.Name" class="text-danger" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="unit">Одиниця виміру</label>
+            <InputText id="unit" class="form-control" @bind-Value="model.Unit" />
+            <ValidationMessage For="() => model.Unit" class="text-danger" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="quantity">Кількість</label>
+            <InputNumber id="quantity" class="form-control" @bind-Value="model.Quantity" />
+            <ValidationMessage For="() => model.Quantity" class="text-danger" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="note">Примітка (необов'язково)</label>
+            <InputText id="note" class="form-control" @bind-Value="model.Note" />
+        </div>
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary" disabled="@isSaving">
+                @(isSaving ? "Збереження..." : "Зберегти")
+            </button>
+            <a class="btn btn-outline-secondary" href="/products">Скасувати</a>
+        </div>
+    </EditForm>
+}
+
+@code {
+    [Parameter]
+    public string? Id { get; set; }
+
+    private bool IsEdit => !string.IsNullOrWhiteSpace(Id);
+    private ProductModel model = new();
+    private EditContext? editContext;
+    private ValidationMessageStore? messageStore;
+    private bool isLoading = true;
+    private bool isSaving;
+    private bool notFound;
+    private string? errorMessage;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        isLoading = true;
+        notFound = false;
+        errorMessage = null;
+
+        if (IsEdit)
+        {
+            try
+            {
+                var found = await Api.FindAsync(Id!);
+                if (found is null)
+                {
+                    notFound = true;
+                    isLoading = false;
+                    return;
+                }
+
+                model = found;
+            }
+            catch (HttpRequestException)
+            {
+                errorMessage = "Api недоступний. Перевірте, чи запущено src/Api.";
+                model = new ProductModel { Id = Id! };
+            }
+        }
+        else
+        {
+            model = new ProductModel();
+        }
+
+        editContext = new EditContext(model);
+        messageStore = new ValidationMessageStore(editContext);
+        editContext.OnFieldChanged += (_, args) => messageStore?.Clear(args.FieldIdentifier);
+        isLoading = false;
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        if (editContext is null || messageStore is null)
+            return;
+
+        isSaving = true;
+        errorMessage = null;
+        messageStore.Clear();
+
+        var result = IsEdit
+            ? await Api.UpdateAsync(model)
+            : await Api.CreateAsync(model);
+
+        isSaving = false;
+
+        if (result.Ok)
+        {
+            Nav.NavigateTo("/products");
+            return;
+        }
+
+        errorMessage = result.Message ?? "Не вдалося зберегти запис.";
+
+        if (result.Errors is not null)
+        {
+            foreach (var (field, messages) in result.Errors)
+            {
+                messageStore.Add(editContext.Field(field), messages);
+            }
+
+            editContext.NotifyValidationStateChanged();
+        }
+    }
+}

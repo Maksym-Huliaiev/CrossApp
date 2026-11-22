@@ -1,0 +1,79 @@
+@page "/products"
+@rendermode InteractiveServer
+@using Web.Contracts
+@using Web.Services
+@inject ProductsApiClient Api
+
+<PageTitle>Склад — Товари</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Товари на складі</h1>
+    <a class="btn btn-primary" href="/products/new">Додати товар</a>
+</div>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger" role="alert">@error</div>
+}
+else if (items is null)
+{
+    <p><em>Завантаження...</em></p>
+}
+else if (items.Count == 0)
+{
+    <p>Записів ще немає.</p>
+}
+else
+{
+    <p class="text-muted small">
+        Товари із залишком менше @LowStockThreshold підсвічено жовтим.
+    </p>
+
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Артикул</th>
+                <th>Назва</th>
+                <th>Кількість</th>
+                <th>Од. виміру</th>
+                <th>Примітка</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in items)
+            {
+                <tr class="@(item.Quantity < LowStockThreshold ? "table-warning" : "")">
+                    <td>@item.Sku</td>
+                    <td>@item.Name</td>
+                    <td>@item.Quantity</td>
+                    <td>@item.Unit</td>
+                    <td>@(string.IsNullOrWhiteSpace(item.Note) ? "—" : item.Note)</td>
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-outline-secondary" href="@($"/products/{item.Id}")">
+                            Редагувати
+                        </a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private const int LowStockThreshold = 150;
+    private List<ProductModel>? items;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            items = await Api.ListAsync();
+        }
+        catch (HttpRequestException)
+        {
+            error = "Api недоступний. Перевірте, чи запущено src/Api.";
+        }
+    }
+}

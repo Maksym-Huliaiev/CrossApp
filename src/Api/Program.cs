@@ -11,30 +11,37 @@ var builder = WebApplication.CreateBuilder(args);
 
 // 1. Налаштування OpenAPI та формату помилок
 builder.Services.AddOpenApi();
-builder.Services.AddProblemDetails(); 
+builder.Services.AddProblemDetails();
 
-// 2. Підключаємо наш кастомний обробник помилок (Додаткове завдання 3)
+// 2. Підключаємо наш кастомний обробник помилок
 builder.Services.AddExceptionHandler<DomainExceptionHandler>();
 
-// --- ДОДАЄМО НАЛАШТУВАННЯ БАЗИ ДАНИХ (Лабораторна 11) ---
+// --- НАЛАШТУВАННЯ БАЗИ ДАНИХ (Лабораторна 11) ---
 var raw = builder.Configuration.GetConnectionString("AppDb") ?? "Data Source=data/app.db";
 var csb = new SqliteConnectionStringBuilder(raw);
 if (!Path.IsPathRooted(csb.DataSource))
-{ 
+{
     var full = Path.Combine(builder.Environment.ContentRootPath, csb.DataSource);
     Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-    csb.DataSource = full; 
+    csb.DataSource = full;
 }
 
 builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlite(csb.ConnectionString));
 
-// 3. Реєструємо сховище як SCOPED (замість Singleton)
-builder.Services.AddScoped<ICatalogStore, EfCatalogStore>(); 
-// --------------------------------------------------------
+// 3. Реєструємо сховище як SCOPED
+builder.Services.AddScoped<ICatalogStore, EfCatalogStore>();
+
+// --- CORS ДЛЯ BLAZOR-КЛІЄНТА (Лабораторна 12) ---
+var webOrigin = builder.Configuration["Cors:WebOrigin"] ?? "http://localhost:5090";
+builder.Services.AddCors(o => o.AddPolicy("web", p =>
+    p.WithOrigins(webOrigin)
+     .AllowAnyHeader()
+     .AllowAnyMethod()));
+// ------------------------------------------------
 
 var app = builder.Build();
 
-// --- АВТОМАТИЧНЕ СТВОРЕННЯ БАЗИ ПРИ ЗАПУСКУ ---
+// --- АВТОМАТИЧНЕ ЗАСТОСУВАННЯ МІГРАЦІЙ ПРИ ЗАПУСКУ ---
 using (var scope = app.Services.CreateScope())
 {
     if (app.Environment.IsDevelopment())
@@ -42,13 +49,15 @@ using (var scope = app.Services.CreateScope())
         scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
     }
 }
-// ----------------------------------------------
 
-// 4. Вмикаємо перехоплення помилок, щоб вони йшли через наш DomainExceptionHandler
+// 4. Вмикаємо перехоплення помилок
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
-// 5. Вмикаємо інтерфейс документації Scalar тільки для режиму розробки
+// 5. Вмикаємо CORS обов'язково до маршрутів
+app.UseCors("web");
+
+// 6. Scalar тільки для режиму розробки
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -57,7 +66,7 @@ if (app.Environment.IsDevelopment())
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
-// 6. Підключаємо наші маршрути з ProductEndpoints.cs
+// 7. Підключаємо маршрути товарів
 app.MapProducts();
 
 app.Run();

@@ -21,3 +21,15 @@
 - Створення нової міграції:
   ```bash
   dotnet ef migrations add <НазваМіграції> --project src/Infrastructure --startup-project src/Api
+
+  запуск серва
+dotnet run --project src/Api
+
+додаткове 11
+dotnet build
+dotnet test
+
+список міграцій та бд
+
+dotnet ef migrations list --project src/Infrastructure --startup-project src/Api
+dotnet ef database update --project src/Infrastructure --startup-project src/Api
